@@ -1,6 +1,6 @@
 ---
 title: "Homework 2: DIFFERENTIAL GENE EXPRESSION, CLUSTERING ANALYSIS"
-author: "Marko Ludaic, Denis Expósito Navarro"
+author: "Marko Ludaic"
 date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"      
 output:
   html_document:
