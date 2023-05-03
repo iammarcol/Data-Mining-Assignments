@@ -2,7 +2,7 @@
 This is a repository that contains three assignment that have been done on the Data Mining subject.
 All of them are done in R Studio and they cover different topics such as exploratory data analysis (EDA), differential gene expression, clustering analysis and machine learning on cancer data. 
 
-# Assignment_1 - ANALYSIS OF A HEART DISEASE DATA SET
+# 1 ANALYSIS OF A HEART DISEASE DATA SET
 Load the data from
 [here](https://raw.githubusercontent.com/jpinero/DMI_2021/main/datasets/heart_disease_dataset.csv), and the description is [here](https://raw.githubusercontent.com/jpinero/DMI_2021/main/datasets/heart_disease_description.txt). 
 The original dataset comes from [here](https://archive.ics.uci.edu/ml/datasets/Heart+Disease) and corresponds to the [processed cleveland data](https://archive.ics.uci.edu/ml/machine-learning-databases/heart-disease/processed.cleveland.data)
@@ -21,7 +21,7 @@ but instead of representing the clusters in the annotation, represent the groups
 Add a second annotation with information of deathm and a third one with information of gender
 
 
-# Assignment_2 - CLUSTERING AND DIMENTIONALITY REDUCTION
+# 2 CLUSTERING AND DIMENTIONALITY REDUCTION
 
 ## Clustering gene expression data in healthy tissues
 
@@ -55,7 +55,7 @@ What are the top 50 genes that contribute to the PC1? Are they the same genes th
 Perform t-SNE on the dataset and visualize the results. Test at least 2 perplexity values.
 
 
-# Assignment_3 - MACHINE LEARNING
+# 3 MACHINE LEARNING
 KNN, decision trees, random forest, logistic regression, linear discriminant analysis 
 
 ## part 1
