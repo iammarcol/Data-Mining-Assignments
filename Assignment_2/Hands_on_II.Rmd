@@ -1,0 +1,626 @@
+---
+title: "Homework 2: DIFFERENTIAL GENE EXPRESSION, CLUSTERING ANALYSIS"
+author: "Marko Ludaic, Denis Expósito Navarro"
+date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"      
+output:
+  html_document:
+    toc: true
+    fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+# Clustering
+
+## **Optional exercise** 
+
+Follow the tutorial from the [clustering section](https://genomicsclass.github.io/book/pages/clustering_and_heatmaps.html) of the book [PH525x series - Biomedical Data Science](http://genomicsclass.github.io/book/). 
+
+Install the package [tissuesGeneExpression](https://github.com/genomicsclass/tissuesGeneExpression) by running in R: 
+
+```{r, eval=F}
+library(devtools)
+install_github("genomicsclass/tissuesGeneExpression")
+library(tissuesGeneExpression)
+data(tissuesGeneExpression)
+library(RColorBrewer) 
+library(genefilter)
+library(gplots) 
+library(rafalib)
+```
+
+```{r}
+# calculating distances for the clustering
+d<-dist(t(e)) 
+#
+mypar()          # optimizes graphical parameters for the plot window
+hc <- hclust(d)
+hc               # summary of the clustering data
+
+plot(hc,labels=tissue,cex=0.5)
+```
+- Different tissues are not so easily depicted, because of the way the cluster is plotted, so that why it's better to add colors  this time, for the clarity.
+```{r}
+myplclust(hc, labels=tissue, lab.col=as.numeric(tissue), cex=0.5)
+```
+- What we have is a dendrogram, so to be able to see if the function managed to separate data into different tissues we have to set a cut-off line, and thus decide for the number of clusters we want to have.
+```{r}
+myplclust(hc, labels=tissue, lab.col=as.numeric(tissue),cex=0.5)
+abline(h=120)
+# those two have to be executed together at once
+```
+- This gives as a graphical representation of where the cut-off line will be positioned.
+```{r}
+hclusters <- cutree(hc, h=120)
+table(true=tissue, cluster=hclusters) # a cross-table
+```
+- The table describes how the clusters overlap with the actual tissues from the data set, while the number of clusters generated is by default. It is noticeable that there are some overlaps for clusters, such as cluster 3 and 4 both correspond to the 'hippocampus' area.
+```{r}
+hclusters <- cutree(hc, k=8)
+table(true=tissue, cluster=hclusters)
+```
+- Here, we set the number of wanted clusters to 8. There are some exceptions (hippocampus, liver and cerebellum), but in general, each tissue is represented by one of the clusters.
+
+# K-MEANS CLUSTERING
+
+```{r}
+set.seed(1)
+km <- kmeans(t(e[1:2,]), centers=7) # choosing first 2 genes
+names(km)
+```
+
+```{r}
+mypar(1,2)
+plot(e[1,], e[2,], col=as.numeric(tissue), pch=16)
+plot(e[1,], e[2,], col=km$cluster, pch=16)
+```
+- The first plot shows colored dots as actual tissues, while the second plot gives a representation of different clusters defined by kmeans. 
+```{r}
+table(true=tissue,cluster=km$cluster)
+```
+- By observing the cross-table results it is clear that this method did not perform well since there is a lot of overlapping across different tissues and clusters. The reason may be that the first two genes are not informative enough to give us a clear divergence. 
+```{r}
+km <- kmeans(t(e), centers=7)
+mds <- cmdscale(d)
+
+mypar(1,2)
+plot(mds[,1], mds[,2]) 
+plot(mds[,1], mds[,2], col=km$cluster, pch=16)
+
+table(true=tissue,cluster=km$cluster)
+```
+- After we plot all genes we get a much better result, the similar one that we got with the hierarchical clustering.
+
+# HEATMAP 
+
+```{r}
+hmcol <- colorRampPalette(brewer.pal(9, "GnBu"))(100) # defying a color palette 
+# installing genefilter 
+rv <- rowVars(e)         # pick genes with the top variance from the sample 'e'     
+idx <- order(-rv)[1:40]
+```
+
+```{r}
+
+cols <- palette(brewer.pal(8, "Dark2"))[as.numeric(tissue)]
+head(cbind(colnames(e),cols))
+
+# generate a heatmap
+heatmap.2(e[idx,], labCol=tissue,
+          trace="none", 
+          ColSideColors=cols, 
+          col=hmcol)
+```
+
+## Clustering gene expression data in healthy tissues
+
+Download the [data](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-6081) (design and tpm files) corresponding to the publication [An RNASeq normal tissue atlas for mouse and rat](https://www.nature.com/articles/sdata2017185). 
+Download the [gene expression data](https://storage.googleapis.com/gtex_analysis_v8/rna_seq_data/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_median_tpm.gct.gz) corresponding to the publication  [The Genotype-Tissue Expression (GTEx) pilot analysis: multitissue gene regulation in humans](https://www.science.org/doi/10.1126/science.1262110) from  the [GTEX portal](https://gtexportal.org/home/datasets)
+
+From GTEX data, keep only tissues belonging to the following categories:  
+
+
+```{r echo=FALSE}
+# Libraries:
+library(magrittr)
+library(dplyr)
+library(rafalib)
+library(biomaRt)
+library(tibble)
+library(dendextend)
+library(tidyverse)
+library(factoextra)
+library(genefilter)
+library(ComplexHeatmap)
+library(grid)
+library(ggplot2)
+library(Rtsne)
+```
+
+
+```{r echo=FALSE}
+gtex_tissues <-  c("name","colon", "ileum", "duodenum", "jejunum", "small intestine"  , "muscle", "pancreas", "liver", "stomach",  "kidney",  "quadriceps", "thymus", "heart" ,    "esophagus", "brain" )
+# loading the data
+human_data<-read.csv("data/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_median_tpm.gct")
+mouse_data<-read.csv("data/E-MTAB-6081/mouse_tpm.txt",sep="\t")
+rat_data<-read.csv("data/E-MTAB-6081/rat_tpm.txt",sep="\t")
+# developing a data frame in the correct format
+human_data<-human_data[-1,]
+human_data<-as.data.frame(human_data)
+human_data<-data.frame(do.call("rbind", strsplit(as.character(human_data$human_data), "\t", fixed = TRUE)))
+colnames(human_data)<-tolower(human_data[1,])
+human_data<-human_data[-1,]
+#
+```
+
+**pro tip** Do not manually copy from the column names. Convert all column names from GTEX data to lower case, and split them appropriately.
+
+```{r echo=FALSE}
+# keep only tissues from gtex_tissues
+human_data <- human_data[, grep(paste(gtex_tissues, collapse="|"), colnames(human_data))]
+# set to lower case for later analysis
+colnames(mouse_data) <- tolower(colnames(mouse_data))
+colnames(rat_data) <- tolower(colnames(rat_data))
+# sort human_data
+rownames(human_data)<-human_data$name
+human_data<-human_data[,-1]
+str(human_data) 
+# all characters, but they should be numeric
+i <- c(1:27)
+human_data[, i] <- apply(human_data[, i], 2,         
+                          function(x) as.numeric(as.character(x)))
+# remove the version ID
+removed_vers <- gsub("\\.\\d+$","", rownames(human_data))
+rownames(human_data) <- removed_vers
+### check for missing values
+human_data[!complete.cases(human_data),]  # 0
+mouse_data[!complete.cases(mouse_data),]  # 0
+rat_data[!complete.cases(rat_data),]      # 0
+```
+
+```{r echo=FALSE}
+# rename 
+colnames(rat_data) <- gsub("kidneys", "kidney", colnames(rat_data))
+# remove one techincal outlier in the mouse_data
+mouse_data <- mouse_data[,which(!grepl("199_11", colnames(mouse_data)))]
+# exclude the "unknown" tissue
+rat_data <- rat_data[,which(!grepl("unknown", colnames(mouse_data)))]
+
+```
+
+
+```{r}
+############ FIND ORTHOLOGS USING biomaRt ###################
+mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl", host="https://www.ensembl.org")
+# search for the attributes
+att <- listAttributes(mart)
+# set a new character for the search
+human_ID <- rownames(human_data)
+# obtain orthologs
+species <- getBM(attributes = c("ensembl_gene_id", "mmusculus_homolog_ensembl_gene",
+                                "rnorvegicus_homolog_ensembl_gene"),
+                      filters = "ensembl_gene_id",
+                      values = human_ID,
+                      mart = mart)
+# remove missing values for all species
+species <- species[!(is.na(species$ensembl_gene_id) | species$ensembl_gene_id==""),] 
+species <- species[!(is.na(species$mmusculus_homolog_ensembl_gene) | species$mmusculus_homolog_ensembl_gene==""),] 
+species <- species[!(is.na(species$rnorvegicus_homolog_ensembl_gene) | species$rnorvegicus_homolog_ensembl_gene==""),] 
+# remove duplicates
+species <- species[!duplicated(species$ensembl_gene_id),]
+# set new column names for later merging of data frames
+colnames(species)<-c("gene_symbol_human","gene_symbol_mouse","gene_symbol_rat")
+```
+- The code above is used to obtain the IDs from biomaRt database and R library by searching for orthologue genes. 
+
+```{r}
+### MOUSE
+
+for (tissue in gtex_tissues) {
+  
+  # find the columns that contain the current tissue
+  tissue_columns <- grep(tissue, colnames(mouse_data))
+  
+  if (length(tissue_columns) > 1) {
+
+    # find the median of those columns
+    tissue_median <- Biobase::rowMedians(as.matrix(mouse_data)[, tissue_columns])
+  
+    # add the row means as a new column to the data frame
+    mouse_data[, paste0(tissue)] <- tissue_median
+    
+    # remove previous columns
+    mouse_data <- mouse_data %>% dplyr::select(-all_of(tissue_columns))
+    
+  }
+
+}
+
+colnames(mouse_data) <- paste(colnames(mouse_data), "_mouse", sep = "")
+
+### RAT
+
+for (tissue in gtex_tissues) {
+  
+  # find the columns that contain the current tissue
+  tissue_columns <- grep(tissue, colnames(rat_data))
+  
+  if (length(tissue_columns) > 1) {
+
+    # calculate the median of those columns
+    tissue_median <- Biobase::rowMedians(as.matrix(rat_data)[, tissue_columns])
+  
+    # add the row means as a new column to the data frame
+    rat_data[, paste0(tissue)] <- tissue_median
+    
+    # remove previous columns
+    rat_data <- rat_data %>% dplyr::select(-all_of(tissue_columns))
+    
+  }
+
+}
+
+colnames(rat_data) <- paste(colnames(rat_data), "_rat", sep = "")
+
+```
+- In the data frame for species mouse and rat there is a certain number of samples for each tissue (duplicates, or triplicates), so the median is used across those replicates and the data frame is modified accordingly, since the human data frame is median.tpm as well. Furthermore, column names of both data frames are changed to indicate which species tissues belong to. 
+
+```{r}
+############################## QUALITY CONTROL ##################################
+
+# setting the thresholds
+outlier_threshold <- 3
+threshold <- 0.5
+
+### HUMAN
+
+# calculate the mean expression for each gene
+mean_human <- rowMeans(human_data)
+human_data <- human_data[abs(mean_human - mean(mean_human)) < outlier_threshold * stats::sd(mean_human), ]
+
+# gene filtering based on mean 
+human_data <- human_data[mean_human > threshold, ]
+
+# based on variance
+variance_h <- apply(human_data,1,var)
+human_data <- human_data[variance_h > threshold, ]
+
+### MOUSE 
+
+mean_mouse <- rowMeans(mouse_data)
+mouse_data <- mouse_data[abs(mean_mouse - mean(mean_mouse)) < outlier_threshold * stats::sd(mean_mouse), ]
+
+mouse_data <- mouse_data[mean_mouse > threshold, ]
+
+variance_m <- apply(mouse_data,1,var)
+mouse_data <- mouse_data[variance_m > threshold, ]
+
+### RAT
+
+mean_rat <- rowMeans(rat_data)
+rat_data <- rat_data[abs(mean_rat - mean(mean_rat)) < outlier_threshold * stats::sd(mean_rat), ]
+
+rat_data <- rat_data[mean_rat > threshold, ]
+
+variance_r <- apply(rat_data,1,var)
+rat_data <- rat_data[variance_r > threshold, ]
+```
+- In this part threshold are set to exclude the outliers of each species' data frame and later on to remove genes with low expression levels by filtering gene expression data based on the mean.
+
+```{r}
+################ DATA FRAME PREPARATION FOR MERGING #####################
+# assigning rownames of each data frame to a new column for merging
+
+human_data <- as.data.frame(human_data)
+human_data <- rownames_to_column(human_data, var = "gene_symbol_human")
+
+mouse_data <- as.data.frame(mouse_data)
+mouse_data <- rownames_to_column(mouse_data, var = "gene_symbol_mouse")
+
+rat_data <- as.data.frame(rat_data)
+rat_data <- rownames_to_column(rat_data, var = "gene_symbol_rat")
+```
+
+
+```{r}
+# make a new data frame species all together
+merged_df <- merge(species, mouse_data, by="gene_symbol_mouse") 
+merged_df <- merge(merged_df, rat_data, by="gene_symbol_rat")
+merged_df <- merge(merged_df, human_data, by="gene_symbol_human")
+merged_df <- na.omit(merged_df)
+# cleaning, filtering, sorting
+rownames(merged_df) <- 1:nrow(merged_df)
+duplicated(merged_df$gene_symbol_human)
+merged_df$gene_symbol_human <- make.unique(merged_df$gene_symbol_human)
+rownames(merged_df)<-merged_df$gene_symbol_human 
+merged_df <- merged_df %>% dplyr::select(-1,-2,-3)
+merged_transposed <- t(merged_df)
+merged_transposed<-scale(merged_transposed)
+```
+- Three data frames are merged by their common gene_symbol_X columns. After sorting the new obtained data frame with data for all species, scaling was done and the data frame was made ready for clustering. 
+
+### Cluster tissues using gene expression data. Run k-means and hierarchical clustering. For each algorithm, determine the optimal number of clusters. 
+
+```{r}
+######### HIERARCHICAL CLUSTERING ###########
+d_h<-dist(merged_transposed, method="euclidean")  # works
+mypar()          # optimizes graphical parameters for the plot window
+hc_h <- hclust(d_h, method = "complete")
+hc_h          # summary of the clustering data
+plot(hc_h,cex=0.5)
+
+# Deciding on the number of clusters
+wcss <- sapply(1:20, function(k) {
+  kmeans(merged_transposed, k, nstart = 50, algorithm = "Hartigan-Wong")$tot.withinss
+})
+
+plot(1:20, wcss, type = "b", xlab = "Number of Clusters", ylab = "WCSS")
+
+cut_height <- hc_h$height[which.max(hc_h$height >= 3)] # selected 3 clusters
+groups <- data.frame(cutree(hc_h, h = cut_height))
+
+plot(hc_h, cex=0.5)
+rect.hclust(hc_h, k = 2, border = "red")
+
+# Coloring clusters
+k <- 2
+tissue <- rownames(merged_transposed)
+clusters <- cutree(hc_h, k)
+cluster_colors <- c("red", "blue")
+sample_colors <- cluster_colors[clusters]
+myplclust(hc_h, labels=tissue, lab.col=sample_colors, cex=0.5)
+for (i in 2:k) {
+  rect.hclust(hc_h, k=i, border=cluster_colors[i])
+}
+```
+
+- By performing hierarchical clustering technique we have obtained 2 clusters, even tho we have expected to obtain 3 clusters, each for one species we observed. It seems like the gene expression across tissues is more similar between mouse and rat species, so they tend to group together. We have tried several ways of filtering and scaling the data so the three cluster could be obtained, but the only way was when we scaled only rat data before merging all data frames, which is not appropriate method when performing this analysis.
+
+```{r}
+##################### K-MEANS CLUSTERING #######################
+
+# scaling has already been done for merged_transposed
+km<-kmeans(merged_transposed, 3, iter.max = 10, nstart = 1)
+# determining and visualizing optimal num of clusters with different methods
+fviz_nbclust(merged_transposed,kmeans,method="wss") # 4 clusters
+fviz_nbclust(merged_transposed,kmeans,method="silhouette") # 6 clusters
+fviz_nbclust(merged_transposed,kmeans,method="gap_stat") # 2 clusters
+# we expect 3 clusters, but the best approach would be to take 2
+
+# creating cluster biplot
+km_cluster<-fviz_cluster(kmeans(merged_transposed,centers=2,iter.max=100,nstart=100),data=merged_transposed)
+km_cluster
+```
+- Once again, it is observable that the mouse and rat data are closely grouped together, while the human gene expressino data is separated. 
+
+
+### Compare the clustering results using both methodologies, and with the tissues/species. Show the results of the final partitions as a table. 
+
+```{r}
+# hclust
+hierarchical <- cutree(hc_h, k=2)
+tissue_names <- colnames(merged_df)
+col_tissue <- as.numeric(tissue_names)
+table_hclust <- table(true=tissue_names,cluster=hierarchical)
+df_hclust <- as.data.frame.matrix(table_hclust)
+
+# k-means
+cluster_assignments <- km_cluster$data$cluster
+nclusters <- 2
+cluster_table <- data.frame(matrix(0, nrow = ncol(merged_df), ncol = 2))
+
+table_kmeans <- data.frame(matrix(ncol = nclusters, nrow = length(colnames(merged_df))))
+
+colnames(table_kmeans) <- 1:nclusters
+rownames(table_kmeans) <- colnames(merged_df)
+
+table_kmeans <- table_kmeans %>% mutate_all(.funs = function(x) 0)
+
+for (i in 1:length(cluster_assignments)) {
+  table_kmeans[i,as.numeric(cluster_assignments[i])] <- 1
+}
+
+print(table_kmeans)
+print(df_hclust)
+```
+- from the table it is once again evident that mouse and rat tissues are clustered together along with two human tissues (heart - left ventricle and pancreas). On the other hand, hierarchical clustering performed better, because all of the human data is preserved in one cluster, while mouse and rat data stayed combined.
+
+
+### Plot a heatmap of the 50 genes with top variance over all samples. Add the information about tissue groups and model (human, rat and mouse) as annotations in the heatmap*. 
+
+
+```{r}
+
+# search for the external_gene_name that will be displayed on the heatmap
+heatmap_genes <- getBM(attributes = c("ensembl_gene_id", "external_gene_name"),
+                      filters = "ensembl_gene_id",
+                      values = human_ID,
+                      mart = mart)
+# take 50 most variable genes
+rv <- rowVars(merged_df)
+idx <- order(-rv)[1:50]
+heatmap_df<-merged_df[idx,]
+# make a new column with gene IDs for the merging of data frames
+heatmap_df$ensembl_gene_id<-rownames(heatmap_df)
+# merge data frames by gene IDs column
+heatmap_df <- merge(heatmap_genes, heatmap_df, by="ensembl_gene_id") 
+# set rownames to gene IDs for the heatmap
+rownames(heatmap_df)<-heatmap_df$external_gene_name
+# exclude unnecessary columns
+heatmap_df<-heatmap_df[,3:55]
+# plot the first heatmap 
+ComplexHeatmap::Heatmap(t(heatmap_df), 
+                        row_names_gp = gpar(fontsize = 8), 
+                        column_names_gp = gpar(fontsize = 8),
+                        name="Level expression")
+first_df<-heatmap_df
+
+############ ADDING ANNOTATIONS #################
+
+
+# create a new data frame with one row and 53 columns
+species_data <- data.frame(matrix(nrow = 1, ncol = 53))
+# assign the values from columns 1 to 14 as "mouse"
+species_data[, 1:14] <- "mouse"
+# assign the values from columns 15 to 26 as "rat"
+species_data[, 15:26] <- "rat"
+# assign the values from columns 27 to 53 as "human"
+species_data[, 27:53] <- "human"
+colnames(species_data)<-colnames(heatmap_df)
+heatmap_df<-rbind(species_data, heatmap_df)
+
+
+# create a new data frame with one row and 53 columns
+tissue_data <- data.frame(matrix(nrow=1,ncol=53))
+# assign the values to columns
+colnames(tissue_data)<-colnames(heatmap_df)
+# assign tissue to the each slot accordingly 
+for (col_name in colnames(tissue_data)) {
+  for (gtex_tissue in gtex_tissues) {
+    if (grepl(gtex_tissue, col_name)) {
+      tissue_data[, col_name] <- gtex_tissue
+      break # exit the loop once a matching tissue is found
+    }
+  }
+}
+# set the colors of tissues
+tissue_colors <- c("colon" = "red", "ileum" = "green", "duodenum" = "blue", 
+                   "jejunum" = "orange", "small intestine" = "purple", 
+                   "muscle" = "yellow", "pancreas" = "brown", "liver" = "gray", 
+                   "stomach" = "pink", "kidney" = "cyan", "quadriceps" = "magenta", 
+                   "thymus" = "navy", "heart" = "black", "esophagus" = "hot pink", 
+                   "brain" = "violet")
+# make the final heatmap with annotations
+ComplexHeatmap::Heatmap(t(first_df), 
+                        column_names_gp = gpar(fontsize = 5.5),
+                        name="Level expression") +
+  ComplexHeatmap::Heatmap(t(species_data),
+                          col = c("mouse" = "blue", "human" = "pink", "rat" = "brown"),
+                          name="Species") +
+  ComplexHeatmap::Heatmap(t(tissue_data),
+                          col = tissue_colors,
+                          name="Tissues",show_row_names = FALSE)
+```
+- Observing the final heatmap it is evident the same as it was observed by clustering. Human tissues are all clustered together as one groups, while the mouse and rat tissues are combined. On the other side, tissues are grouped together correctly which we can see from the second annotation. Additionally, "ensembl_gene_IDs" have been changed to gene symbols, so that it is more clear what are the genes that contributed to making this heatmap.
+
+
+# Exercise 2: Dimensionality reduction 
+
+## PCA 
+With the gene expression for different tissues and models, perform a PCA on the data and visualize the results (PC1 and PC2, and also, PC3 ). Label the points in the plot with their respective tissues/models. 
+
+```{r}
+
+df_pca <- prcomp(merged_transposed, center = TRUE, scale. = TRUE) # Center and scale the data
+
+# PC1/PC2
+plot(df_pca$x[,1], df_pca$x[,2], xlab = "PC1", ylab = "PC2", main = "PCA Plot of Gene Expression Data")
+# add tissue labes
+plot(df_pca$x[,1], df_pca$x[,2], xlab = "PC1", ylab = "PC2", main = "PCA Plot of Gene Expression Data")+
+  text(df_pca$x[,1], df_pca$x[,2], labels = rownames(merged_transposed), cex = 0.7)
+
+
+# PC2/PC3
+plot(df_pca$x[,2], df_pca$x[,3], xlab = "PC2", ylab = "PC3", main = "PCA Plot of Gene Expression Data")
+# add tissue labes
+plot(df_pca$x[,2], df_pca$x[,3], xlab = "PC2", ylab = "PC3", main = "PCA Plot of Gene Expression Data")+
+  text(df_pca$x[,2], df_pca$x[,3], labels = rownames(merged_transposed), cex = 0.7)
+
+
+# PC1/PC3
+plot(df_pca$x[,1], df_pca$x[,3], xlab = "PC1", ylab = "PC3", main = "PCA Plot of Gene Expression Data")
+# add tissue labes
+plot(df_pca$x[,1], df_pca$x[,3], xlab = "PC1", ylab = "PC3", main = "PCA Plot of Gene Expression Data")+
+  text(df_pca$x[,1], df_pca$x[,3], labels = rownames(merged_transposed), cex = 0.7)
+  
+```
+
+
+### Visualize the data using the PC1 and PC2 again, but this time, color the observations by cluster, using the k means clusters, with k of your choice. Produce a caption for the plot
+
+
+```{r}
+
+# Determine the optimal number of clusters
+wss <- (nrow(merged_transposed) - 1) * sum(apply(merged_transposed, 2, var))
+for (i in 2:15) {
+  kmeans_fit <- kmeans(merged_transposed, centers = i)
+  wss[i] <- sum(kmeans_fit$withinss)
+}
+plot(1:15, wss, type = "b", xlab = "Number of Clusters", ylab = "Within-Cluster Sum of Squares")
+
+k <- 3
+kmeans_fit <- kmeans(merged_transposed, centers = k)
+clusters <- kmeans_fit$cluster
+# Visualize PCA results colored by cluster
+colors <- rainbow(k)
+plot(df_pca$x[,1], df_pca$x[,2], xlab = "PC1", ylab = "PC2", main = "PCA Plot of Gene Expression Data, Colored by Cluster", col = colors[clusters])
+# add labels for tissues
+plot(df_pca$x[,1], df_pca$x[,2], xlab = "PC1", ylab = "PC2", main = "PCA Plot of Gene Expression Data, Colored by Cluster", col = colors[clusters]) + 
+  text(df_pca$x[,1], df_pca$x[,2], labels = rownames(merged_transposed), cex = 0.5)
+
+```
+- When we set k to 3 human tissues also tend to separate in two groups where the first group contains all brain tissues, so brain tend to group more closely, and then the second groups is left with the rest of the human tissue. PC1 is successful in dividing data by species, except we have mouse and rat data clustering together. PC2 is performing quite good in depicting different tissue types. 
+
+### What are the top 50 genes that contribute to the PC1? Are they the same genes that are more variable according to the exercise 1?
+
+
+```{r}
+PC1_genes <- abs(get_pca_var(df_pca)$contrib[,1]) # abs: absolute value
+
+# Select only the top 50
+top_50_genes  <- as.matrix(head(sort(PC1_genes , decreasing = TRUE), 50))
+top_50_genes<-rownames(top_50_genes)
+top_50_genes<-as.matrix(top_50_genes)
+colnames(top_50_genes)<-"ensembl_gene_id"
+pc_var_genes <- merge(heatmap_genes, top_50_genes, by="ensembl_gene_id") 
+# these are the top 50 genes that contribute to the PC1
+view(pc_var_genes)
+hm_var_genes <- as.matrix(rownames(heatmap_df))
+colnames(hm_var_genes)<-"external_gene_name"
+# compare two data frames by merging them to find if there are common genes
+compare<-merge(pc_var_genes,hm_var_genes,by="external_gene_name") # 0
+```
+- By using the function get_pca_var()  from library(factoextra) to extract top 50 variable genes from pca and then afterwards merging the dataframe with the data frame of top 50 variable genes from the exercise 1, the result seems to be "0" meaning that there are no same genes more variable while comparing pca and those from the first exercise. 
+
+
+## tSNE 
+
+Perform t-SNE on the dataset and visualize the results. Test at least 2 perplexity values.
+
+```{r}
+# Create a data frame with the t-SNE results and tissue/species information
+tsne_17 <- Rtsne(merged_transposed, check_duplicates = FALSE, perplexity = 17) 
+tsne_df_17 <- data.frame(x = tsne_17$Y[,1], y = tsne_17$Y[,2], tissue = rownames(merged_transposed), species_data = as.factor(species_data))
+
+# Plot the t-SNE results, colored by species, with perplexity = 17
+ggplot(tsne_df_17, aes(x, y, color = species_data)) + 
+  geom_point(size = 3) + 
+  ggtitle(paste("t-SNE Plot of Gene Expression Data with Perplexity = 17")) +
+  xlab("t-SNE1") + 
+  ylab("t-SNE2") + 
+  theme_classic() 
+
+
+tsne_10 <- Rtsne(merged_transposed, check_duplicates = FALSE, perplexity = 10)
+tsne_df_10 <- data.frame(x = tsne_10$Y[,1], y = tsne_10$Y[,2], tissue = rownames(merged_transposed), species_data = as.factor(species_data))
+
+# Plot the t-SNE results, colored by species, with perplexity = 10
+ggplot(tsne_df_10, aes(x, y, color = species_data)) + 
+  geom_point(size = 3) + 
+  ggtitle(paste("t-SNE Plot of Gene Expression Data with Perplexity = 10")) +
+  xlab("t-SNE1") + 
+  ylab("t-SNE2") + 
+  theme_classic()
+```
+- We plot the t-SNE with different perplexity values. This hyper parameter determined the number of close neibours that each point has, and it seems that when focusing more on local structures of the data (lower perplexity value, 10), the clusters are better separated.
+
+
+# session info {.unnumbered}
+
+```{r, results='asis',  echo=FALSE, message=FALSE }
+sessionInfo()
+```
