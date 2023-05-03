@@ -1,0 +1,1112 @@
+---
+title: "Hands_on_HOMEWORK_III"
+author: "Marko Ludaic, Denis Expósito Navarro"
+date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"      
+output:
+  html_document:
+    toc: true
+    fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+# Exercise 1
+
+[Stamey et al. 1989](https://www.auajournals.org/doi/10.1016/S0022-5347%2817%2941175-X) examined the correlation between the level of prostate-specific antigen (PSA) and a number of clinical measures in men who were about to receive a radical prostatectomy. PSA is a protein that is produced by the prostate gland. The higher a man’s PSA level, the more likely it is that he has prostate cancer.  
+Use the [prostate cancer dataset](data/prostate_data.txt), described [here](data/prostate_description.txt),  to train a model that predicts log of prostate-specific antigen. 
+The variables are    
+
+- log cancer volume (lcavol)  
+- log prostate weight (lweight)  
+- age  
+- log of the amount of benign prostatic hyperplasia (lbph)   
+- seminal vesicle invasion (svi)  
+- log of capsular penetration (lcp)  
+- Gleason score (gleason)    
+- percent of Gleason scores 4 or 5 (pgg45)  
+
+You can ignore column named "train" and do your own data splitting.  
+Do not forget to perform feature selection!   
+You can use as examples the [Linear Regression Lab](https://hastie.su.domains/ISLR2/Labs/Rmarkdown_Notebooks/Ch3-linreg-lab.html) and the section related to feature selection from  [Lab: Linear Models and Regularization Methods
+](https://hastie.su.domains/ISLR2/Labs/Rmarkdown_Notebooks/Ch6-varselect-lab.html) from the book [An Introduction to Statistical Learning](https://www.statlearning.com/).
+
+```{r}
+# Loading packages
+library(leaps)
+library(caTools)
+```
+
+
+```{r}
+# Load data and ignore train column
+prostate_data <- read.csv("data/prostate_data.txt", sep = "")
+prostate_data <- subset(prostate_data, select = -train)
+
+is.na(prostate_data) # No missing value
+
+# Split the data into training and test sets
+set.seed(123) 
+split <- sample.split(prostate_data$lpsa, SplitRatio = 0.8)
+training_set <- subset(prostate_data, split == TRUE)
+test_set <- subset(prostate_data, split == FALSE)
+```
+
+- We select 80% of the data to be used for training the model and the remaining 20% for testing it.
+Now we try to predict by doing a linear regression model with all our features:
+
+```{r}
+# Fit the linear regression model with all the predictors
+regressor <- lm(lpsa ~ ., data = training_set)
+
+# Make predictions on the test set
+y_pred <- predict(regressor, newdata = test_set)
+
+y_pred
+
+# Quantify accuracy of the model
+rmse <- sqrt(mean((y_pred - test_set$lpsa)^2))
+rmse # 0.6432299
+```
+- We have to take into account that we need to do feature selection first, to reduce overfitting and improve our model. 
+Our criteria will be having the maximum R-squared value (or Adjusted in our case), and the minimun BIC statistic, so we are going to determine how many features accomplish that:
+
+```{r}
+regfit.full <- regsubsets(lpsa ~ ., data = training_set)
+reg.summary <- summary(regfit.full)
+reg.summary$rsq # r-squared depending on number of features
+
+par(mfrow = c(1, 2))
+plot(reg.summary$adjr2, xlab = "Number of features",
+     ylab = "Adjusted RSq", type = "l")
+
+which.max(reg.summary$adjr2) # Maximum R-squared with 6 features
+
+plot(reg.summary$cp, xlab = "Number of features",
+    ylab = "Cp", type = "l")
+
+which.min(reg.summary$cp) # Minimum Cp  with 3 features
+
+plot(reg.summary$bic, xlab = "Number of features",
+    ylab = "BIC", type = "l")
+
+which.min(reg.summary$bic) # Minimum BIC statistic with 3 features
+
+
+coef(regfit.full, 3) # See coefficients and features selected
+coef(regfit.full, 6)
+```
+- We have two options, 3 or 6 features, so we will try both for building the linear regression model and see their accuracy on the predictions:
+
+```{r}
+# 3 features
+regressor3f <- lm(lpsa ~ lcavol + lweight + svi , data = training_set)
+
+y_pred_3f <- predict(regressor3f, newdata = test_set)
+
+y_pred_3f
+
+rmse <- sqrt(mean((y_pred_3f - test_set$lpsa)^2))
+rmse # 0.6779363
+
+# 6 features
+regressor6f <- lm(lpsa ~ lcavol + lweight + age + lbph + svi + pgg45, data = training_set)
+
+y_pred_6f <- predict(regressor6f, newdata = test_set)
+
+y_pred_6f
+
+rmse <- sqrt(mean((y_pred_6f - test_set$lpsa)^2))
+rmse # 0.6503116
+
+```
+- Any of these number of features seemed to be better than our first attempt using all the variables, but in terms of RMSE this is not the case, so it could be that it is overfitting to the training data, and maybe the feature selection could not capture the complexity of the model (there could be some nonlinear relationships with some features, or that some important features were not included).
+
+In any case, we propose the linear model with 6 features to avoid overfitting, as it the one with highest adjusted R-squared, so, based on the coefficients, we have:
+
+```{r}
+coef(regfit.full, 6)
+```
+- Here we have the final model regression:
+
+lpsa =  0.553796794 + 0.508246857(lcavol) + 0.623766684(lweight) - 0.019102557(age) + 0.081727054(lbph) + 0.591146702(svi) + 0.003598437(pgg45)
+
+----------------------------------------------------------------------------------------
+
+# Exercise 2
+
+Use the [breast cancer dataset](data/breat_cancer_data.csv) to train a model that predicts whether a future tumor image (with unknown diagnosis) is a benign or malignant tumor. Try different machine learning algorithms such as:   
+- KNNs  
+- Decision trees  
+- Random forest  
+- Logistic Regression  
+
+The breast cancer dataset contains digitized breast cancer image features, and was created by [Dr. William H. Wolberg, W. Nick Street, and Olvi L. Mangasarian](https://archive.ics.uci.edu/ml/datasets/Breast+Cancer+Wisconsin+%28Diagnostic%29). Each row in the data set represents an image of a tumor sample, including the diagnosis (benign or malignant) and several other measurements (nucleus texture, perimeter, area, and more). Diagnosis for each image was conducted by physicians.
+
+Do not forget to perform hyperparameter tuning!   
+Which of all models performs better for this data? Discuss.  
+
+Generate a ROC curve for all the models. 
+
+You can use as a guide the analysis of this dataset included in the [chapter 5](https://datasciencebook.ca/classification1.html) of the Data Science, A First Introduction Book.
+Additionally, for further information and ideas, you can check [this post](https://www.rebeccabarter.com/blog/2020-03-25_machine_learning/)
+
+```{r}
+# Loading packages
+library(tidyverse)
+library(tidymodels)
+library(yardstick)
+library(ROCR)
+library(rpart.plot)
+library(ranger)
+library(glmnet)
+```
+
+```{r}
+# Load the dataset and take a quick view
+breast_cancer <- read.csv("data/breat_cancer_data.csv")
+glimpse(breast_cancer)
+
+# Eliminate redundant id column and X column full of NA
+breast_cancer <- subset(breast_cancer, select = -c(id,X))
+
+# Turn the diagnosis into factor, and verify the categories there
+breast_cancer <- breast_cancer |>
+  mutate(diagnosis = as_factor(diagnosis))
+glimpse(breast_cancer)
+
+breast_cancer |>
+  pull(diagnosis) |>
+  levels() # "M" "B"
+
+# Percentage of diagnosis types
+num_obs <- nrow(breast_cancer)
+breast_cancer |>
+  group_by(diagnosis) |>
+  summarize(
+    count = n(),
+    percentage = n() / num_obs * 100
+  ) # 37% M and 63% B
+```
+
+- We take a quick look to the data and our response variable.
+
+```{r}
+# Split the data into training and testing sets
+set.seed(123)
+
+bc_split <- initial_split(breast_cancer, prop = 0.70, strata = diagnosis)
+bc_train <- training(bc_split)
+bc_test <- testing(bc_split)
+
+# Check proportion of diagnosis in each set
+bc_train |>
+  group_by(diagnosis) |>
+  summarize(
+    count = n(),
+    percentage = n() / nrow(bc_train) * 100
+  ) # 37.3% M and 62.7% B
+
+bc_test |>
+  group_by(diagnosis) |>
+  summarize(
+    count = n(),
+    percentage = n() / nrow(bc_test) * 100
+  ) # 37.2% M and 62.8% B
+```
+
+- 70% of the data goes for training and 30% for testing. We can observe that proportions for diagnosis are practically maintained in both sets.
+
+```{r}
+# Set up the recipe to preprocess the data
+bc_recipe <- recipe(diagnosis ~ ., data = bc_train) %>%
+  # downsampling to balance number of B and M
+  themis::step_downsample(diagnosis) %>% 
+  #data normalization
+  step_center(-diagnosis) %>% 
+  step_scale(-diagnosis) %>% 
+  step_BoxCox(-diagnosis) %>% 
+  modify_if(is.character, as.factor)%>%
+  #apply the recipe to the data
+  prep()
+
+#apply the recipe to the training set
+bc_juiced <- juice(bc_recipe)
+
+#apply the same recipe to the test data
+baked_test <- bake(bc_recipe, new_data = bc_test)
+```
+
+- Data is preprocessed and we obtain two new sets, bc_juiced for training and baked_test for test.
+
+- Now it is time to generate models to predict the diagnosis:
+
+# KNN 
+```{r}
+knn_spec <- nearest_neighbor() %>% 
+  set_engine("kknn") %>% 
+  set_mode("classification")
+
+#Fit the pre-processed training data
+knn_fit <- knn_spec %>% 
+  fit(diagnosis ~., data = bc_juiced)
+
+knn_fit
+
+#First evaluation of the model
+knn_fit %>% 
+  predict(baked_test) %>% 
+  bind_cols(baked_test) %>% 
+  metrics(truth = diagnosis, estimate = .pred_class)
+# 94.2% accuracy and 87.5% Kappa
+```
+
+- Accuracy and kappa metrics are used to evaluate this first model with default parameters. We proceed with hyperparameter tuning. In this case, the number of neighbors.
+
+```{r}
+# Hyperparameter tuning: Number of neighbors
+#Create 5 folds for cross validation on the training data set
+cv <- vfold_cv(bc_juiced, v = 5)
+
+knn_tune <- nearest_neighbor(neighbors = tune()) %>% 
+  set_engine('kknn') %>% 
+  set_mode('classification')
+
+knn_wf <- workflow() %>% 
+  add_model(knn_tune) %>% 
+  add_recipe(bc_recipe)
+
+#create a grid of hyperparameter values to test
+knn_grid <- tibble(neighbors = c(5, 10, 15, 20, 25, 30, 50, 75, 100, 125, 150))
+
+#tune  workflow
+set.seed(123)
+knn_tuning <- knn_wf %>% 
+  tune_grid(resamples = cv,
+            grid = knn_grid,
+            metrics = metric_set(accuracy, roc_auc,  kap))
+
+#show the top 5 best models based on roc_auc metric
+knn_tuning %>% show_best('roc_auc')
+```
+
+- We choose 20 neighbors as it is the model with higher AUC.
+
+```{r}
+knn_spec_20 <- nearest_neighbor(neighbors = 20) %>% 
+  set_engine("kknn") %>% 
+  set_mode("classification")
+
+# Fit the pre-processed training data
+knn_fit_20 <- knn_spec_20 %>% 
+  fit(diagnosis ~ ., data = bc_juiced)
+
+knn_fit_20
+
+# Evaluation of the final model
+knn_fit_20 %>% 
+  predict(baked_test) %>% 
+  bind_cols(baked_test) %>% 
+  metrics(truth = diagnosis, estimate = .pred_class)
+# 95.9% accuracy and 91.3% Kappa
+```
+
+- AUC plot
+
+```{r}
+# Generate predicted probabilities and predicted class labels for the test set
+test_preds <- knn_fit_20 %>% 
+  predict(baked_test) %>% 
+  bind_cols(bc_test) %>% 
+  select(diagnosis, .pred_class)
+
+# Convert the factor variables to numeric vectors
+test_scores <- as.numeric(test_preds$.pred_class == "M",test_preds$.pred_class =="B")
+test_labels <- as.numeric(test_preds$diagnosis == "M",test_preds$diagnosis == "B")
+
+# Generate the ROC curve using the ROCR package
+test_pred <- prediction(test_scores, test_labels)
+perf <- performance(test_pred, "tpr", "fpr", ret=c("fpr", "tpr", "cutoff"))
+
+# Plot the ROC curve
+plot(perf, main = "ROC Curve", col = "blue", lwd = 2, legacy.axes = TRUE)
+```
+
+
+# Decision trees  
+
+```{r}
+#Specify the model
+dt_mod <- decision_tree() %>% 
+  set_engine("rpart") %>% 
+  set_mode("classification")
+
+#create 10-fold cross-validation data object
+cv <- vfold_cv(bc_train)
+
+#Fit the decision tree model with 10-fold cross-validation and save all the model object
+dt_default <- fit_resamples(dt_mod, 
+                            preprocessor = bc_recipe, 
+                            resamples = cv,
+                            control = control_resamples(extract = function(x) extract_model(x))
+)
+
+#pulling out the model
+pull_model <- function(extract_fold) {
+  extract_fold$.extracts[[1]]
+}
+
+all_mods <- map(dt_default$.extracts, pull_model)
+
+#Estimate the model's performance
+collect_metrics(dt_default) # 91.9% accuracy and 93.1% AUC
+
+# See some of the models generated
+rpart.plot(all_mods[[1]], type = 4)
+rpart.plot(all_mods[[2]], type = 4)
+rpart.plot(all_mods[[3]], type = 4)
+```
+
+- The accuracy and the AUC is calculated for the evaluation of this initial model. 
+
+```{r}
+### Hyperparameter tuning ####
+#First modify decision tree model
+dt_tune <- dt_mod %>% 
+  set_args(cost_complexity = tune(),
+           min_n = tune())
+
+#Use a regular grid with 10 possible values for cost complexity and 5 possible values for the minimum n.
+dt_grid <- grid_regular(
+  cost_complexity(), 
+  min_n(), 
+  levels = c(10, 5)
+)
+
+# Grid search
+dt_tune_fit <- tune_grid(
+  dt_tune,
+  preprocessor = bc_recipe,
+  resamples = cv,
+  grid = dt_grid
+) # It can take some time
+
+#Showing the best hyperparameter combinations based on roc_auc metric
+show_best(dt_tune_fit, metric = "roc_auc")
+```
+
+- Wee see that the best models have the same value for the roc AUC metric and min_n, so we choose the one with less cost complexity.
+
+```{r}
+#tuned model
+dt_tune2 <- dt_tune %>% 
+  set_args(cost_complexity = 0.0000000001, min_n = 21)
+
+#fit the tuned model
+dt_tune_fit2 <- tune_grid(
+  dt_tune2,
+  preprocessor = bc_recipe,
+  resamples = cv,
+)
+
+best_params <- select_best(dt_tune_fit2, metric = "roc_auc")
+final_mod <- finalize_model(dt_tune2, best_params)
+final_mod
+
+dt_finalized <- last_fit(final_mod,
+                         preprocessor = bc_recipe,
+                         split = bc_split)
+
+dt_finalized$.metrics[[1]] # Now 92.4% accuracy and 95.7% AUC
+
+```
+
+- As expected, the evaluation shows now a better model. Now we plot again the ROC curve.
+
+```{r}
+# Extract the underlying model object
+dt_model <- extract_fit_parsnip(dt_finalized)
+
+# Generate predicted probabilities and predicted class labels for the test set
+test_preds <- predict(dt_model, baked_test) %>% 
+  bind_cols(bc_test) %>% 
+  select(diagnosis, .pred_class)
+
+# Convert the factor variables to numeric vectors
+test_scores <- as.numeric(test_preds$.pred_class == "M")
+test_labels <- as.numeric(test_preds$diagnosis == "M")
+
+# Generate the ROC curve using the ROCR package
+test_pred <- prediction(test_scores, test_labels)
+perf <- performance(test_pred, "tpr", "fpr", ret=c("fpr", "tpr", "cutoff"))
+
+# Plot the ROC curve
+plot(perf, main = "ROC Curve", col = "blue", lwd = 2, legacy.axes = TRUE)
+
+```
+
+
+# Random forest  
+
+```{r}
+#Specify the model
+rf_spec <- rand_forest() %>% 
+  set_engine("ranger") %>% 
+  set_mode("classification")
+
+#Fit the pre-processed training data
+rf_fit <- rf_spec %>% 
+  fit(diagnosis ~., data = bc_juiced)
+
+rf_fit
+
+#Evaluate random forest model
+rf_fit %>% 
+  predict(baked_test) %>% 
+  bind_cols(baked_test) %>% 
+  metrics(truth = diagnosis, estimate = .pred_class)
+# 92.4% accuracy and 84.17% kappa
+```
+
+- First evaluation seems to be not as good as with the previous ones.. Let's do hyperparameter tuning.
+
+```{r}
+#Hyperparameter tuning
+rf_model <- 
+  rand_forest() %>%
+  set_args(mtry = tune()) %>%
+  # select the engine/package that underlies the model
+  set_engine("ranger", importance = "impurity") %>%
+  set_mode("classification") 
+
+#define 10-cross-fold validation on the training set
+cv <- vfold_cv(bc_train)
+
+# set the workflow
+rf_workflow <- workflow() %>%
+  # add the recipe
+  add_recipe(bc_recipe) %>%
+  # add the model
+  add_model(rf_model)
+
+#specify which values to try with
+rf_grid <- expand.grid(mtry = c(3, 4, 5))
+
+#Perform grid search with mtry values 3,4 and 5
+rf_tune_results <- rf_workflow %>%
+  tune_grid(resamples = cv,
+            grid = rf_grid, # grid of values to try
+            metrics = metric_set(accuracy, roc_auc,  kap) # metrics we care about
+  )
+
+show_best(rf_tune_results, metric = "roc_auc")
+```
+
+- The best mtry seems to be 4 based on the roc AUC, so we will use that model.
+
+```{r}
+#tuned model
+rf_tuned <- 
+  rand_forest() %>%
+  # specify that the `mtry` parameter needs to be tuned
+  set_args(mtry = 4) %>%
+  # select the engine/package that underlies the model
+  set_engine("ranger", importance = "impurity") %>%
+  set_mode("classification") 
+
+rf_tuned
+
+# set the tuned workflow
+rf_workflow_tuned <- workflow() %>%
+  add_recipe(bc_recipe) %>%
+  add_model(rf_tuned)
+
+rf_finalized <- last_fit(rf_workflow_tuned,
+                         preprocessor = bc_recipe,
+                         split = bc_split,
+                         metrics = metric_set(accuracy, roc_auc,  kap))
+
+#evaluate tuned model
+rf_tune_results2 <- rf_workflow_tuned %>%
+  tune_grid(resamples = cv,
+            metrics = metric_set(accuracy, roc_auc,  kap) # metrics we care about
+  )
+
+rf_tune_results2 %>%
+  collect_metrics() # 94.9% accuracy, 89.5% kappa and 98.9% AUC
+```
+
+```{r}
+# Plot AUC
+
+rf_model <- extract_fit_parsnip(rf_finalized)
+
+test_preds <- predict(rf_model, baked_test) %>% 
+  bind_cols(bc_test) %>% 
+  select(diagnosis, .pred_class)
+
+# Convert the factor variables to numeric vectors
+test_scores <- as.numeric(test_preds$.pred_class == "M")
+test_labels <- as.numeric(test_preds$diagnosis == "M")
+
+# Generate the ROC curve using the ROCR package
+test_pred <- prediction(test_scores, test_labels)
+perf <- performance(test_pred, "tpr", "fpr")
+
+
+# Plot the ROC curve
+plot(perf, main = "ROC Curve", col = "blue", lwd = 2, legacy.axes = TRUE)
+```
+
+
+# Logistic regression 
+
+```{r}
+#Defining a model
+logistic_model <- 
+  logistic_reg() %>%
+  set_engine("glm", family = "binomial") %>%
+  set_mode("classification")
+
+
+# Fit the model
+lr_fit <- logistic_model %>% 
+  fit(diagnosis ~., data = bc_juiced)
+
+tidy(lr_fit)
+
+# Categorical predictor variables
+x <- model.matrix(diagnosis ~., data = bc_juiced)[,-1]
+
+# Convert the outcome (class) to a numerical variable
+y <- ifelse(bc_juiced$diagnosis == "M", 1, 0)
+```
+
+```{r}
+# Hyperparameter tuning (lambda)
+cv_lasso <- cv.glmnet(x, y, alpha = 1, family = "binomial")
+model <- glmnet(x, y, family = "binomial", alpha = 1, lambda = cv_lasso$lambda.min)
+cv_lasso$lambda.min # Optimal number of lambda = 0.0087
+# Display regression coefficients
+coef(model)
+
+# Make predictions on the test data
+x_test <- model.matrix(diagnosis ~., baked_test)[,-1]
+probabilities <- model %>% predict(newx = x_test)
+predicted <- ifelse(probabilities > 0.5, "M", "B")
+
+# Model accuracy
+observed <- baked_test$diagnosis
+mean(predicted == observed) # Accuracy of 97%
+```
+
+- We see a really good accuracy here in this model. Let's plot the ROC curve
+
+```{r}
+# Create a prediction object
+predictions <- prediction(probabilities, baked_test$diagnosis)
+
+# Calculate the ROC curve and AUC
+roc <- performance(predictions, "tpr", "fpr")
+auc <- performance(predictions, "auc")
+auc <- auc@y.values[[1]]
+auc # 99.8%
+
+# Plot the ROC curve
+plot(roc, main = "ROC Curve", col = "blue", lwd = 2, ylim = c(0, 1), xlim = c(0, 1))
+abline(a = 0, b = 1, lwd = 2, lty = 2, col = "gray")
+```
+
+- After generating and evaluating all these models, we can conclude that the logistic regression model seems to be the best one in terms of AUC (99.81%) and accuracy (97%). Also the curve seems to be smoother compared to the other models.
+
+# Exercise 3  
+
+Use [The Cancer Genome Atlas (TCGA)](https://www.genome.gov/Funded-Programs-Projects/Cancer-Genome-Atlas) gene expression data of two different cancer types to build a machine learning model that identifies whether one unknown sample belongs to one or the other. The TCGA is a comprehensive and coordinated effort to accelerate our understanding of the molecular basis of cancer through the application of genome analysis technologies, including large-scale genome sequencing. The program has generated, analyzed, and made available genomic sequence, expression, methylation, and copy number variation data on over 11,000 individuals who represent over 30 different types of cancer. 
+After building your model, you should predict the cancer types for [10 unkwnon samples](data/unknwown_samples.tsv).  
+
+For this task, you should retrieve the TCGA data from the [Genomic Data Commons Data Portal](https://portal.gdc.cancer.gov/). If necessary you can watch the video uploaded in the Campus Global. The video assumes that you have previously installed the [GDC data transfer tool](https://gdc.cancer.gov/access-data/gdc-data-transfer-tool). 
+
+Each team will work with two specific cancer types, that will be assigned in class.
+
+Important notice: if you do not have a lot of hard drive space in your laptop, you can modify the manifest file to download only 50 samples per cancer types. 
+As part of the assignment, you should provide the input data fed to the machine learning algorithm as a tsv file. 
+
+```{r}
+# Loading the packages
+library(caret)
+library(glmnet)
+library(pROC)
+library(randomForest)
+```
+
+
+```{r}
+# loading the data
+files <- list.files(path = "data/LAML/", pattern = "\\.tsv$")
+
+for (i in seq_along(files)) {
+  # Read the file into a data frame
+  data <- read.table(paste("data/LAML/", files[i], sep=""), header=TRUE, sep="\t")
+  
+  # Delete rows 1, 3, 4, 5, and 6
+  rows_to_delete <- c(1, 3, 4, 5, 6)
+  data <- data[-rows_to_delete, ]
+  
+  # Open the remaining rows using read.table() and separating by \t
+  assign(paste0("laml", i), read.table(textConnection(paste(apply(data, 1, paste, collapse = "\t"), collapse = "\n")), header=TRUE, sep="\t"))
+}
+
+##############################
+# Loop over all the data frames
+for (i in 1:50) {
+  # Read the file into a data frame
+  data <- read.table(paste("data/LAML/", files[i], sep=""), header=TRUE, sep="\t")
+  
+  # Assign the first column values as row names
+  rownames(data) <- data[, 1]
+  
+  # Delete the first three columns
+  data <- data[, -c(1:3)]
+  
+  # Assign the modified data frame to a variable with a name like laml1, laml2, etc.
+  assign(paste0("laml", i), data)
+}
+
+###################
+
+# Loop over all the data frames
+for (i in 1:50) {
+  # Read the file into a data frame
+  data <- read.table(paste("data/LAML/", files[i], sep=""), header=TRUE, sep="\t")
+  
+  # Assign the first column values as row names
+  rownames(data) <- data[, 1]
+  
+  # Delete the first three columns
+  data <- data[, -c(1:3)]
+  
+  # Delete rows 1 to 4
+  data <- data[-c(1:4), ]
+  
+  # Assign the modified data frame to a variable with a name like laml1, laml2, etc.
+  assign(paste0("laml", i), data)
+}
+
+
+############ mean
+# Load all data frames into a list
+list_of_data_frames <- lapply(paste0("laml", 1:50), function(x) get(x))
+
+# Calculate the mean for each slot across all data frames
+laml_data <- Reduce("+", list_of_data_frames) / length(list_of_data_frames)
+
+
+####################################################################### LGG ##################################################################### 
+###################################################################### 
+
+
+files <- list.files(path = "data/LGG/", pattern = "\\.tsv$")
+
+for (i in seq_along(files)) {
+  # Read the file into a data frame
+  data <- read.table(paste("data/LGG/", files[i], sep=""), header=TRUE, sep="\t")
+  
+  # Delete rows 1, 3, 4, 5, and 6
+  rows_to_delete <- c(1, 3, 4, 5, 6)
+  data <- data[-rows_to_delete, ]
+  
+  # Open the remaining rows using read.table() and separating by \t
+  assign(paste0("lgg", i), read.table(textConnection(paste(apply(data, 1, paste, collapse = "\t"), collapse = "\n")), header=TRUE, sep="\t"))
+}
+
+##############################
+# Loop over all the data frames
+for (i in 1:50) {
+  # Read the file into a data frame
+  data <- read.table(paste("data/LGG/", files[i], sep=""), header=TRUE, sep="\t")
+  
+  # Assign the first column values as row names
+  rownames(data) <- data[, 1]
+  
+  # Delete the first three columns
+  data <- data[, -c(1:3)]
+  
+  # Assign the modified data frame to a variable with a name like lgg1, lgg2, etc.
+  assign(paste0("lgg", i), data)
+}
+
+###################
+
+# Loop over all the data frames
+for (i in 1:50) {
+  # Read the file into a data frame
+  data <- read.table(paste("data/LGG/", files[i], sep=""), header=TRUE, sep="\t")
+  
+  # Assign the first column values as row names
+  rownames(data) <- data[, 1]
+  
+  # Delete the first three columns
+  data <- data[, -c(1:3)]
+  
+  # Delete rows 1 to 4
+  data <- data[-c(1:4), ]
+  
+  # Assign the modified data frame to a variable with a name like lgg1, lgg2, etc.
+  assign(paste0("lgg", i), data)
+}
+
+
+############ mean
+# Load all data frames into a list
+list_of_data_frames <- lapply(paste0("lgg", 1:50), function(x) get(x))
+
+# Calculate the mean for each slot across all data frames
+lgg_data <- Reduce("+", list_of_data_frames) / length(list_of_data_frames)
+```
+
+- In this first part, we've prepared the TCGA data of both cancer types. We've used 50 samples of both cancer types, since the usage of more requires more computational power and storage. Further, we've deleted 5 rows that were not out of use for the analysis and training the model and assigned the correct rownames as genes. The same was done for both cancer types. 
+
+```{r}
+################ MERGING TWO DATA FRAMES
+rownames(laml_data) <- paste0(rownames(laml_data), "_laml")
+laml_data$cancer_type<-"0"
+rownames(lgg_data) <- paste0(rownames(lgg_data), "_lgg")
+lgg_data$cancer_type<-"1"
+###
+data<-rbind(laml_data,lgg_data)
+###
+
+data$cancer_type <- factor(data$cancer_type)
+################################################################
+# Center the data
+data_centered <- scale(data[,1:6], center = TRUE, scale = FALSE)
+
+# Scale the data
+data_scaled <- scale(data_centered[,1:6], center = FALSE, scale = TRUE)
+data_scaled<-as.data.frame(data_scaled)
+data_scaled$cancer_type<-data$cancer_type
+################################################################
+
+###
+set.seed(123)  # for reproducibility
+train_index <- createDataPartition(data_scaled$cancer_type, p = 0.8, list = FALSE, times = 1)
+train_data <- data[train_index, ]
+test_data <- data[-train_index, ]
+###
+ggplot(train_data, aes(x = cancer_type)) +
+  geom_bar(fill = "#fc9272") +
+  ggtitle("Distribution of cancer types in train_data") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+ggplot(test_data, aes(x = cancer_type)) +
+  geom_bar(fill = "#fc9272") +
+  ggtitle("Distribution of cancer types in test_data") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+cc<-t(train_data)
+###
+lm <- glm(formula = cancer_type ~ ., data = train_data, family = binomial())
+summary(lm)
+```
+
+- In the next part, we've merged two data frames, so that we could get one data frame with the data containing both cancer types. As columns, we perserved same variables, but then added a new one which would indicate what cancer type the sample gene refers to. The column we added is "cancer_type" and it has the value of 0 for LAML and the vaule of 1 for LGG. The data was centered and scaled before being divided into train and test data. 
+
+```{r}
+### FILTERING
+# Lasso Regression
+# Split data into training and test sets
+set.seed(123)
+train_index <- createDataPartition(data_scaled$cancer_type, p = 0.8, list = FALSE, times = 1)
+train_data <- data_scaled[train_index, ]
+test_data <- data_scaled[-train_index, ]
+# Convert the cancer_type column to a factor variable
+train_data$cancer_type <- as.factor(train_data$cancer_type)
+test_data$cancer_type <- as.factor(test_data$cancer_type)
+```
+
+```{r}
+# Fit a Lasso model using glmnet
+x <- model.matrix(cancer_type ~ ., data = train_data)[,-1] # exclude the intercept column
+y <- train_data$cancer_type
+fit <- cv.glmnet(x, y, family = "binomial", alpha = 1, nfolds = 5) # takes some time 
+# Plot the cross-validated deviance as a function of lambda
+plot(fit)
+# Select the optimal lambda value based on cross-validation
+lambda_opt <- fit$lambda.min
+# Get the coefficients of the Lasso model at the optimal lambda
+coef_opt <- coef(fit, s = lambda_opt)
+coef_opt[coef_opt != 0]
+```
+
+- Here we've decided to use Lasso regression which is a type of linear regression that performs variable selection and regularization. It is commonly used in machine learning for feature selection, which can help improve the performance of a model and reduce overfitting. In our example, Lasso regression is used to build a predictive model for cancer type classification. The "glmnet" package is used to perform the Lasso regression, which is followed by splitting the data into training and test sets. The training set is used to fit the model, while the test set is used to evaluate the model's performance on unseen data.
+
+```{r}
+# Evaluate the performance of the Lasso model on the test set
+x_test <- model.matrix(cancer_type ~ ., data = test_data)[,-1]
+y_test <- test_data$cancer_type
+pred <- predict(fit, s = lambda_opt, newx = x_test, type = "response")
+auc <- roc(y_test, pred)$auc
+auc # 0.9696
+```
+
+- We have obtained the AUC value of ~ 0.97 which we considered a good and reliable.
+
+```{r}
+## Prepare unknown samples
+
+# Load and clean unknown data
+unknown_data <- read.table("data/unknown_samples.tsv", header = TRUE, row.names = 1, sep = "\t")
+unknown_data <- unknown_data[, -1]
+
+# Preprocess unknown data
+# Center the data
+unknown_data_centered <- scale(unknown_data[,1:10], center = TRUE, scale = FALSE)
+
+# Scale the data
+unknown_data_scaled <- scale(unknown_data_centered[,1:10], center = FALSE, scale = TRUE)
+
+```
+
+```{r}
+# Load the data for the individual to predict on
+individual_1 <- data.frame(unknown_data_scaled[,1])
+colnames(individual_1) <- "tpm_unstranded"
+
+input_data_1 <- matrix(0, nrow = nrow(individual_1), ncol = 6)
+input_data_1[,4] <- individual_1$tpm_unstranded
+rownames(input_data_1) <- rownames(individual_1)
+input_data_1 <- data.frame(input_data_1)
+colnames(input_data_1) <- c("unstranded", "stranded_first", "stranded_second", "tpm_unstranded",
+                            "fpkm_unstranded", "fpkm_uq_unstranded")
+input_matrix_1 <- as.matrix(input_data_1)
+
+# Make predictions using the model
+predictions_1 <- predict(fit, s = lambda_opt, newx = input_matrix_1, type = "response")
+predicted_1 <- ifelse(predictions_1 > 0.5, 1, 0)
+predicted_1<- ifelse(predicted_1 == 0, "laml", "lgg")
+table(predicted_1) # LAML for individual 1
+```
+
+```{r}
+# Load the data for the individual to predict on
+individual_2 <- data.frame(unknown_data_scaled[,2])
+colnames(individual_2) <- "tpm_unstranded"
+
+input_data_2 <- matrix(0, nrow = nrow(individual_2), ncol = 6)
+input_data_2[,4] <- individual_2$tpm_unstranded
+rownames(input_data_2) <- rownames(individual_2)
+input_data_2 <- data.frame(input_data_2)
+colnames(input_data_2) <- c("unstranded", "stranded_first", "stranded_second", "tpm_unstranded",
+                            "fpkm_unstranded", "fpkm_uq_unstranded")
+input_matrix_2 <- as.matrix(input_data_2)
+
+# Make predictions using the model
+predictions_2 <- predict(fit, s = lambda_opt, newx = input_matrix_2, type = "response")
+predicted_2 <- ifelse(predictions_2 > 0.5, 1, 0)
+predicted_2 <- ifelse(predicted_2 == 0, "laml", "lgg")
+table(predicted_2) # LAML for individual 2
+
+
+
+# Load the data for the individual to predict on
+individual_3<- data.frame(unknown_data_scaled[,3])
+colnames(individual_3) <- "tpm_unstranded"
+
+input_data_3 <- matrix(0, nrow = nrow(individual_3), ncol = 6)
+input_data_3[,4] <- individual_3$tpm_unstranded
+rownames(input_data_3) <- rownames(individual_3)
+input_data_3 <- data.frame(input_data_3)
+colnames(input_data_3) <- c("unstranded", "stranded_first", "stranded_second", "tpm_unstranded",
+                            "fpkm_unstranded", "fpkm_uq_unstranded")
+input_matrix_3 <- as.matrix(input_data_3)
+
+# Make predictions using the model
+predictions_3 <- predict(fit, s = lambda_opt, newx = input_matrix_3, type = "response")
+predicted_3 <- ifelse(predictions_3 > 0.5, 1, 0)
+predicted_3 <- ifelse(predicted_3 == 0, "laml", "lgg")
+table(predicted_3) # LAML for individual 3
+
+
+
+# Load the data for the individual to predict on
+individual_4 <- data.frame(unknown_data_scaled[,4])
+colnames(individual_4) <- "tpm_unstranded"
+
+input_data_4 <- matrix(0, nrow = nrow(individual_4), ncol = 6)
+input_data_4[,4] <- individual_4$tpm_unstranded
+rownames(input_data_4) <- rownames(individual_4)
+input_data_4 <- data.frame(input_data_4)
+colnames(input_data_4) <- c("unstranded", "stranded_first", "stranded_second", "tpm_unstranded",
+                            "fpkm_unstranded", "fpkm_uq_unstranded")
+input_matrix_4 <- as.matrix(input_data_4)
+
+# Make predictions using the model
+predictions_4 <- predict(fit, s = lambda_opt, newx = input_matrix_4, type = "response")
+predicted_4 <- ifelse(predictions_4 > 0.5, 1, 0)
+predicted_4 <- ifelse(predicted_4 == 0, "laml", "lgg")
+table(predicted_4) # LAML for individual 4
+
+
+
+# Load the data for the individual to predict on
+individual_5<- data.frame(unknown_data_scaled[,5])
+colnames(individual_5) <- "tpm_unstranded"
+
+input_data_5 <- matrix(0, nrow = nrow(individual_5), ncol = 6)
+input_data_5[,4] <- individual_5$tpm_unstranded
+rownames(input_data_5) <- rownames(individual_5)
+input_data_5 <- data.frame(input_data_5)
+colnames(input_data_5) <- c("unstranded", "stranded_first", "stranded_second", "tpm_unstranded",
+                            "fpkm_unstranded", "fpkm_uq_unstranded")
+input_matrix_5 <- as.matrix(input_data_5)
+
+# Make predictions using the model
+predictions_5 <- predict(fit, s = lambda_opt, newx = input_matrix_5, type = "response")
+predicted_5 <- ifelse(predictions_5 > 0.5, 1, 0)
+predicted_5 <- ifelse(predicted_5 == 0, "laml", "lgg")
+table(predicted_5) # LAML for individual 5
+
+
+
+# Load the data for the individual to predict on
+individual_6 <- data.frame(unknown_data_scaled[,6])
+colnames(individual_6) <- "tpm_unstranded"
+
+input_data_6 <- matrix(0, nrow = nrow(individual_6), ncol = 6)
+input_data_6[,4] <- individual_6$tpm_unstranded
+rownames(input_data_6) <- rownames(individual_6)
+input_data_6 <- data.frame(input_data_6)
+colnames(input_data_6) <- c("unstranded", "stranded_first", "stranded_second", "tpm_unstranded",
+                            "fpkm_unstranded", "fpkm_uq_unstranded")
+input_matrix_6 <- as.matrix(input_data_6)
+
+# Make predictions using the model
+predictions_6 <- predict(fit, s = lambda_opt, newx = input_matrix_6, type = "response")
+predicted_6 <- ifelse(predictions_6 > 0.5, 1, 0)
+predicted_6 <- ifelse(predicted_6 == 0, "laml", "lgg")
+table(predicted_6) # LAML for individual 6
+
+
+
+# Load the data for the individual to predict on
+individual_7 <- data.frame(unknown_data_scaled[,7])
+colnames(individual_7) <- "tpm_unstranded"
+
+input_data_7 <- matrix(0, nrow = nrow(individual_7), ncol = 6)
+input_data_7[,4] <- individual_7$tpm_unstranded
+rownames(input_data_7) <- rownames(individual_7)
+input_data_7 <- data.frame(input_data_7)
+colnames(input_data_7) <- c("unstranded", "stranded_first", "stranded_second", "tpm_unstranded",
+                            "fpkm_unstranded", "fpkm_uq_unstranded")
+input_matrix_7 <- as.matrix(input_data_7)
+
+# Make predictions using the model
+predictions_7 <- predict(fit, s = lambda_opt, newx = input_matrix_7, type = "response")
+predicted_7 <- ifelse(predictions_7 > 0.5, 1, 0)
+predicted_7 <- ifelse(predicted_7 == 0, "laml", "lgg")
+table(predicted_7) # LAML for individual 7
+
+
+
+# Load the data for the individual to predict on
+individual_8 <- data.frame(unknown_data_scaled[,8])
+colnames(individual_8) <- "tpm_unstranded"
+
+input_data_8 <- matrix(0, nrow = nrow(individual_8), ncol = 6)
+input_data_8[,4] <- individual_8$tpm_unstranded
+rownames(input_data_8) <- rownames(individual_8)
+input_data_8 <- data.frame(input_data_8)
+colnames(input_data_8) <- c("unstranded", "stranded_first", "stranded_second", "tpm_unstranded",
+                            "fpkm_unstranded", "fpkm_uq_unstranded")
+input_matrix_8 <- as.matrix(input_data_8)
+
+# Make predictions using the model
+predictions_8 <- predict(fit, s = lambda_opt, newx = input_matrix_8, type = "response")
+predicted_8 <- ifelse(predictions_8 > 0.5, 1, 0)
+predicted_8 <- ifelse(predicted_8 == 0, "laml", "lgg")
+table(predicted_8) # LAML for individual 8
+
+
+
+# Load the data for the individual to predict on
+individual_9 <- data.frame(unknown_data_scaled[,9])
+colnames(individual_9) <- "tpm_unstranded"
+
+input_data_9 <- matrix(0, nrow = nrow(individual_9), ncol = 6) 
+input_data_9[,4] <- individual_9$tpm_unstranded
+rownames(input_data_9) <- rownames(individual_9)
+input_data_9 <- data.frame(input_data_9)
+colnames(input_data_9) <- c("unstranded", "stranded_first", "stranded_second", "tpm_unstranded",
+                            "fpkm_unstranded", "fpkm_uq_unstranded")
+input_matrix_9 <- as.matrix(input_data_9)
+
+# Make predictions using the model
+predictions_9 <- predict(fit, s = lambda_opt, newx = input_matrix_9, type = "response")
+predicted_9 <- ifelse(predictions_9 > 0.5, 1, 0)
+predicted_9 <- ifelse(predicted_9 == 0, "laml", "lgg")
+table(predicted_9) # LAML for individual 9
+
+# Load the data for the individual to predict on
+individual_10 <- data.frame(unknown_data_scaled[,10])
+colnames(individual_10) <- "tpm_unstranded"
+
+input_data_10 <- matrix(0, nrow = nrow(individual_10), ncol = 6)
+input_data_10[,4] <- individual_10$tpm_unstranded
+rownames(input_data_10) <- rownames(individual_10)
+input_data_10 <- data.frame(input_data_10)
+colnames(input_data_10) <- c("unstranded", "stranded_first", "stranded_second", "tpm_unstranded",
+                            "fpkm_unstranded", "fpkm_uq_unstranded")
+input_matrix_10 <- as.matrix(input_data_10)
+
+# Make predictions using the model
+predictions_10 <- predict(fit, s = lambda_opt, newx = input_matrix_10, type = "response")
+predicted_10 <- ifelse(predictions_10 > 0.5, 1, 0)
+predicted_10 <- ifelse(predicted_10 == 0, "laml", "lgg")
+table(predicted_10) # LAML for individual 10
+```
+
+- Our model predicted more LAML than LGG cancer type predictions in each individual's case, meaning that LAML was a predicted cancer type for all individuals. This seems to be suspicious, even though we've obtained a high AUC value. This would suggest that data processing or merging data into one data frame for training the model had some errors. 
+
+```{r}
+
+classifier = randomForest(x = train_data[,1:6],
+                          y = train_data$cancer_type,
+                          ntree = 500, random_state = 0)
+
+y_pred = predict(classifier, newdata = test_data[,1:6])
+
+### making the confusion matrix
+cm = table(test_data[,7], y_pred)
+cm
+# 0.926
+# create a list to store the predicted classes for each individual
+predictions <- list()
+
+# loop through each individual from 1 to 10
+for (i in 1:10) {
+  # generate the input matrix for this individual
+  input_matrix <- get(paste0("input_matrix_", i))
+  
+  # make the prediction using the trained classifier
+  unknown_pred <- predict(classifier, newdata = input_matrix)
+  
+  # store the predicted class in the list
+  predictions[[i]] <- unknown_pred
+}
+
+# create a table to display the predicted classes for all individuals
+results_table <- table(data.frame(Individual = 1:10, Predicted_Class = unlist(predictions)))
+results_table
+```
+
+- Again, it seems that every individual has been diagnosed with cancer type 0 which is in this case LAML, and it was the same result we obtained by performing the regression model. 
+
+# session info {.unnumbered}
+
+```{r, results='asis',  echo=FALSE, message=FALSE }
+sessionInfo()
+```
