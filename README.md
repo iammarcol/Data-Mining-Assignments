@@ -58,7 +58,7 @@ Perform t-SNE on the dataset and visualize the results. Test at least 2 perplexi
 # 3 MACHINE LEARNING
 KNN, decision trees, random forest, logistic regression, linear discriminant analysis 
 
-## part 1
+## Part 1
 
 [Stamey et al. 1989](https://www.auajournals.org/doi/10.1016/S0022-5347%2817%2941175-X) examined the correlation between the level of prostate-specific antigen (PSA) and a number of clinical measures in men who were about to receive a radical prostatectomy. PSA is a protein that is produced by the prostate gland. The higher a man’s PSA level, the more likely it is that he has prostate cancer.  
 Use the [prostate cancer dataset](data/prostate_data.txt), described [here](data/prostate_description.txt),  to train a model that predicts log of prostate-specific antigen. 
@@ -79,7 +79,7 @@ You can use as examples the [Linear Regression Lab](https://hastie.su.domains/IS
 ](https://hastie.su.domains/ISLR2/Labs/Rmarkdown_Notebooks/Ch6-varselect-lab.html) from the book [An Introduction to Statistical Learning](https://www.statlearning.com/).
 
 
-## part 2
+## Part 2
 
 Use the [breast cancer dataset](data/breat_cancer_data.csv) to train a model that predicts whether a future tumor image (with unknown diagnosis) is a benign or malignant tumor. Try different machine learning algorithms such as:   
 - KNNs  
@@ -98,7 +98,7 @@ You can use as a guide the analysis of this dataset included in the [chapter 5](
 Additionally, for further information and ideas, you can check [this post](https://www.rebeccabarter.com/blog/2020-03-25_machine_learning/)
 
 
-## part 3  
+## Part 3  
 
 Use [The Cancer Genome Atlas (TCGA)](https://www.genome.gov/Funded-Programs-Projects/Cancer-Genome-Atlas) gene expression data of two different cancer types to build a machine learning model that identifies whether one unknown sample belongs to one or the other. The TCGA is a comprehensive and coordinated effort to accelerate our understanding of the molecular basis of cancer through the application of genome analysis technologies, including large-scale genome sequencing. The program has generated, analyzed, and made available genomic sequence, expression, methylation, and copy number variation data on over 11,000 individuals who represent over 30 different types of cancer. 
 After building your model, you should predict the cancer types for [10 unkwnon samples](data/unknwown_samples.tsv).  
