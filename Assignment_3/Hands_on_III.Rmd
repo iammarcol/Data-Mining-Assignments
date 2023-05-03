@@ -1,6 +1,6 @@
 ---
 title: "Hands_on_HOMEWORK_III"
-author: "Marko Ludaic, Denis Expósito Navarro"
+author: "Marko Ludaic"
 date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"      
 output:
   html_document:
