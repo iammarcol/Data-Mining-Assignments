@@ -1,0 +1,354 @@
+---
+title: "Hands_on_I_HOMEWORK "
+author: "Marko Ludaic"
+date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"      
+output:
+  html_document:
+    toc: true
+    fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+
+# Analysis of the Heart Disease Dataset 
+Load the data from
+[here](https://raw.githubusercontent.com/jpinero/DMI_2021/main/datasets/heart_disease_dataset.csv), and the description is [here](https://raw.githubusercontent.com/jpinero/DMI_2021/main/datasets/heart_disease_description.txt). 
+The original dataset comes from [here](https://archive.ics.uci.edu/ml/datasets/Heart+Disease) and corresponds to the [processed cleveland data](https://archive.ics.uci.edu/ml/machine-learning-databases/heart-disease/processed.cleveland.data)
+
+## Perform an EDA on the dataset
+
+```{r}
+# loading used packages
+library(DataExplorer)
+library(ggplot2)
+# loading the data
+hd.raw <- read.csv("data/heart_disease_dataset.csv", sep= " ", 
+                    fileEncoding="UTF-8-BOM", 
+                    na.strings = c("", "-999", "NULL"))
+# statistics and first observations
+head(hd.raw,12)
+tail(hd.raw,12) 
+str(hd.raw)       # categorical variables are set as numerical
+
+# some slots contain "?" so they are converted to NA
+hd.raw[hd.raw$thal=="?","thal"]<-NA
+hd.raw[hd.raw$ca=="?","ca"]<-NA
+# check for rows that contain NA values
+hd.NA <- hd.raw[!complete.cases(hd.raw),]
+hd.NA
+# These NAs are in categorical variables so we cannot impute mean/median values
+# We will keep that rows and ignore the NA values when plotting
+
+# num is categorical with values 0 or 1
+num_value_2<-hd.raw[hd.raw$num=="2",]
+num_value_3<-hd.raw[hd.raw$num=="3",]
+num_value_4<-hd.raw[hd.raw$num=="4",]
+
+# convert values > 0 to 1 which means: having a disease
+hd.raw[hd.raw$num=="2","num"]<-1
+hd.raw[hd.raw$num=="3","num"]<-1
+hd.raw[hd.raw$num=="4","num"]<-1  
+str(hd.raw) 
+
+# set as factors the categorical variables represented numerically
+hd.raw$patient_id <- as.factor(hd.raw$patient_id)
+hd.raw$num <-as.factor(hd.raw$num)  # has 2 categories, non-disease/disease
+hd.raw$ca <- as.factor(hd.raw$ca)   #
+hd.raw$thal <- as.factor(hd.raw$thal)  # has 3 categories, each with their descriptions
+hd.raw$sex <- as.factor(hd.raw$sex) # sex has 2 categories
+hd.raw$cp <- as.factor(hd.raw$cp)  # chest pain (cp) has 4 categories
+hd.raw$fbs <- as.factor(hd.raw$fbs) # 0-F   1-T
+hd.raw$restecg <- as.factor(hd.raw$restecg) # 3 categories
+hd.raw$exang <- as.factor(hd.raw$exang)  # 0-F   1-T
+hd.raw$slope <- as.factor(hd.raw$slope) # 3 categories
+str(hd.raw)
+
+# define levels of discrete categorical data 
+levels(hd.raw$num) <- c("no disease","disease")
+levels(hd.raw$sex) <- c("female", "male")
+levels(hd.raw$cp) <- c("typical angina", "atypical angina", "non-anginal pain", "asymptomatic")
+levels(hd.raw$fbs) <- c("false", "true")
+levels(hd.raw$restecg) <- c("normal","stt","hypertrophy")
+levels(hd.raw$exang) <- c("no", "yes")
+levels(hd.raw$slope) <- c("upsloping", "flat", "downsloping")
+levels(hd.raw$thal) <- c("normal", "fixed defect", "reversable defect")
+str(hd.raw)
+#
+hd.backup<-hd.raw
+```
+
+```{r}
+plot_intro(hd.raw)
+```
+
+- Most of the variables are discrete (~67%) and missing data is really low (only couple of observations in ca and thal columns), so all columns are informative.
+
+## Create visualizations in order to show which variables seem to be more associated with heart disease
+
+```{r}
+plot_bar(hd.raw)
+
+```
+
+A brief view of the 9 categorical plots:
+- The number of male patients is double the number of female patients. Majority of patients had asymptomatic chest pain, fasting blood sugar under 120 mg/dl,did not have exercise induced angina, had 0 major vessels colored by fluoroscopy, had normal thal (heart rate). There was equal number of patients with up-sloping and flat peak exercise ST segment.
+
+```{r}
+# differentiate the condition (having or not the disease) in categorical variables:
+plot_bar(na.omit (hd.raw), by = "num")
+```
+
+- Disease frequency is doubled in males, specially linked to asymptomatic chest pain. The fasting blood sugar content is practically the same in both conditions and the disease frequency increases gradually with abnormal resting electro-cardiographic results and with the number of major vessels. Disease frequency is also more common with exercise induced angina, flat and down-sloping slope of peak exercise ST segment, rather than up-sloping, and with defects in the heart rate.
+
+```{r}
+# Chi-square test
+for(col in colnames(hd.raw[,sapply(hd.raw, is.factor)])){
+  print(paste(col, ":",chisq.test(hd.raw[col],hd.raw$num)$p.value))
+}
+```
+
+- All categories except the fasting blood sugar have a p-value < 0.05, so we would consider a significant association of heart disease condition with them.
+
+```{r}
+#plot continuous variables with regard to type of diagnosis:
+plot_boxplot(na.omit (hd.raw), by = "num")
+```
+
+- Disease status of > 50% diameter narrowing is more present in older patients with slightly higher cholesterol level, higher ST depression and lower thalach.
+
+```{r}
+#distributions of continuous variables
+hd.raw <- drop_columns(hd.raw, c("patient_id"))
+plot_histogram(hd.raw)
+plot_qq(hd.raw, sampled_rows = 1000L)
+```
+
+- Plots showing the deviation from the probability distribution (by default normal). Diagonal represents the expected values. Some variables have higher than expected probability (cholesterol, ST depression and resting blood pressure) while the others have lower than expected probability (age, thalach).
+
+```{r}
+#correlation plot for each pair of variables (and their categories)
+plot_correlation(na.omit(hd.raw), maxcat = 5L)
+#Only continuous variables
+plot_correlation(na.omit(hd.raw), type = "c")
+#only categorical variables
+plot_correlation(na.omit(hd.raw), type = "d")
+```
+
+
+# 2 Difference in mortality rates in hospitalized COVID-19 patients 
+Using the supplementary material from the [Difference in mortality rates in hospitalized COVID-19 patients identified by cytokine profile clustering using a machine learning approach: An outcome prediction alternative](https://www.frontiersin.org/articles/10.3389/fmed.2022.987182/full), perform the following tasks
+
+## Reproduce Figure 1 from the publication
+
+```{r}
+# loading used packages
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(ComplexHeatmap)
+library(RColorBrewer)
+library(gridExtra)
+# loading the data
+table1<-read_excel("data/Table1.XLSX")    
+table2<-read_excel("data/Table2.XLSX")
+is.data.frame(table1)
+is.data.frame(table2)
+# run for quick statistics
+str(table1)   
+str(table2)
+nrow(table2)  #446
+nrow(table1)  #215
+summary(table1)
+summary(table2) # all characters
+```
+
+```{r}
+#---------------------------CORRECTING THE DATA--------------------------#
+colnames(table1)
+colnames(table1)<-table1[1,] # assign the right column names
+table1=table1[-1,]
+colnames(table1)[5]<-"Symptom_onset"
+
+colnames(table2)
+table2[1,1]<-"ID"
+colnames(table2)<-table2[1,]
+table2=table2[-1,]
+
+# convert dates (table1)
+table1$Symptom_onset<-as.numeric(table1$Symptom_onset)
+table1$Symptom_onset<-as.Date(table1$Symptom_onset,origin="1899-12-30")
+
+table1$`Hospitalization date`<-as.numeric(table1$`Hospitalization date`)
+table1$`Hospitalization date`<-as.Date(table1$`Hospitalization date`,origin="1899-12-30")
+
+# the number of rows in table2 is a lot greater than the number in table 1
+# exclude rows that contain NA ID (no ID)
+filter<-!is.na(table2$ID) 
+table2<-table2[filter,]
+
+# there is one slot with "72" in the variable "Gender"  (F or M)
+# exclude this row, since we are uncertain if it is a female or a male
+table1[table1$Gender=="72",]
+table1<-table1[!table1$Gender=="72",] 
+
+# there is one slot with "3" in the variable "Death" (Yes or No)
+# excluding this row
+table1[table1$Death=="3",]
+table1<-table1[!table1$Death=="3",] 
+
+# changing variable types
+# for table1
+table1$Age<-as.numeric(table1$Age)
+table1$BMI<-as.numeric(table1$BMI)
+table1$`Days in ICU`<-as.numeric(table1$`Days in ICU`)
+table1$`Days with ARDS`<-as.numeric(table1$`Days with ARDS`)
+table1$`Days with CRS`<-as.numeric(table1$`Days with CRS`)
+table1$`Days with NIV`<-as.numeric(table1$`Days with NIV`)
+table1$`Days with AMV`<-as.numeric(table1$`Days with AMV`)
+table1$`Days of hospitalization`<-as.numeric(table1$`Days of hospitalization`)
+summary(table1)
+
+# for table2
+i <- c(2:27)  
+table2[ , i] <- apply(table2[, i], 2,         
+                    function(x) as.numeric(as.character(x)))
+summary(table2)   
+
+# delete rows that have duplicated ID's
+table1<-table1[!duplicated(table1$ID),]
+table2<-table2[!duplicated(table2$ID),]
+
+# differences in patients between two tables
+differences<-table1[!table1$ID %in% table2$ID,] 
+# there's 16 more patients (samples) in the table 1
+# we will leave them, since the two tables don't collide in the analysis
+```
+
+```{r}
+#------------------------- REPRODUCING FIGURE 1 -------------------------#
+
+### 1A
+
+fig1A<-ggplot(data=table1,aes(x=Age)) +
+  geom_histogram(binwidth = 10,color="black",fill="light blue")
+
+fig1A + ggtitle("Age") + xlab("Age (years)") + ylab("Frequency (n)") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+### 1C
+
+# create vectors for G1, G2, G3, G4 (filtering)
+G1<-table1[table1$`Use of NIV`=="No" & table1$`Use of AMV`=="No" & table1$`ARDS Diagnosis`=="No",]
+G2_1<-table1[table1$`Use of NIV`=="No" & table1$`Use of AMV`=="Yes" & table1$`ARDS Diagnosis`=="No",]
+G2_2<-table1[table1$`Use of NIV`=="Yes" & table1$`Use of AMV`=="No" & table1$`ARDS Diagnosis`=="No",]
+G2<-rbind(G2_1,G2_2)
+G3<-table1[table1$`Use of NIV`=="Yes" & table1$`Use of AMV`=="No" & table1$`ARDS Diagnosis`=="Yes",]
+G4_1<-table1[table1$`Use of NIV`=="No" & table1$`Use of AMV`=="Yes" & table1$`ARDS Diagnosis`=="Yes",]
+G4_2<-table1[table1$`Use of NIV`=="Yes" & table1$`Use of AMV`=="Yes" & table1$`ARDS Diagnosis`=="No",]
+G4<-rbind(G4_1,G4_2)
+#add new col for the classification
+G1$Classification<-rep(c("G1"),times=63)
+G2$Classification<-rep(c("G2"),times=23)
+G3$Classification<-rep(c("G3"),times=62)
+G4$Classification<-rep(c("G4"),times=23)
+G_list<-list(G1,G2,G3,G4)
+Class_Table<-Reduce(function(x, y) merge(x, y, all=TRUE), G_list) # 171 obs.
+
+fig1C<-ggplot(data=Class_Table,aes(x=Classification)) +
+  geom_bar(show.legend = FALSE,aes(fill=Classification),color="black") +
+  geom_text(aes(label=..count..),stat="count",vjust=-0.5,color="black") 
+
+fig1C+ggtitle("Clinical classification")+ylab("Frequency (n)")+xlab("Clinical classification")+
+  theme(plot.title = element_text(hjust = 0.5))+geom_text(aes(label=..count..),stat="count",vjust=-0.5,color="black") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(color = "black"))
+
+### 1D
+
+fig1D<-ggplot(data=table1,aes(x=Death,fill=Death)) + geom_bar(show.legend = FALSE,color="black") 
+
+fig1D+ggtitle("Vital status")+ylab("Frequency (n)")+
+  theme(plot.title = element_text(hjust = 0.5))+geom_text(aes(label=..count..),stat="count",vjust=-0.5,color="black") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"))
+```
+
+```{r}
+ grid.arrange(fig1A, fig1C, fig1D, ncol=3)
+```
+
+
+
+## Reproduce Figure 2 from the publication
+but instead of representing the clusters in the annotation, represent the groups (G1 to G4)
+
+```{r}
+# there IS 12 cytokines used in the paper's analysis, not 13 as paper suggests
+# making a new data frame that will be used to make a heatmap with cytokines
+heatmap_table<-subset(table2,select=c("ID","IL-6","CXCL10","IL-38","IL-8","IFN-ɑ","IL-10","TNF-ɑ","CCL2","CCL3","IFN-γ","IL-1β","G-CSF"))
+# find how many missing values
+colSums(is.na(heatmap_table))
+# correcting missing values
+heatmap_table[is.na(heatmap_table$`IL-6`),"IL-6"]<-median(heatmap_table$`IL-6`, na.rm = TRUE)
+heatmap_table[is.na(heatmap_table$`CXCL10`),"CXCL10"]<-median(heatmap_table$CXCL10, na.rm = TRUE)
+heatmap_table[is.na(heatmap_table$`IL-38`),"IL-38"]<-median(heatmap_table$`IL-38`, na.rm = TRUE)
+heatmap_table[is.na(heatmap_table$`IL-8`),"IL-8"]<-median(heatmap_table$`IL-8`, na.rm = TRUE)
+heatmap_table[is.na(heatmap_table$`IFN-ɑ`),"IFN-ɑ"]<-median(heatmap_table$`IFN-ɑ`, na.rm = TRUE)
+heatmap_table[is.na(heatmap_table$`IL-10`),"IL-10"]<-median(heatmap_table$`IL-10`, na.rm = TRUE)
+heatmap_table[is.na(heatmap_table$`TNF-ɑ`),"TNF-ɑ"]<-median(heatmap_table$`TNF-ɑ`, na.rm = TRUE)
+heatmap_table[is.na(heatmap_table$`CCL2`),"CCL2"]<-median(heatmap_table$`CCL2`, na.rm = TRUE)
+heatmap_table[is.na(heatmap_table$`CCL3`),"CCL3"]<-median(heatmap_table$`CCL3`, na.rm = TRUE)
+heatmap_table[is.na(heatmap_table$`IFN-γ`),"IFN-γ"]<-median(heatmap_table$`IFN-γ`, na.rm = TRUE)
+heatmap_table[is.na(heatmap_table$`IL-1β`),"IL-1β"]<-median(heatmap_table$`IL-1β`, na.rm = TRUE)
+heatmap_table[is.na(heatmap_table$`G-CSF`),"G-CSF"]<-median(heatmap_table$`G-CSF`, na.rm = TRUE)
+
+colSums(is.na(heatmap_table)) # no NAs
+```
+
+
+```{r}
+# make a new dataframe for the new annotations
+annotation_data<-subset(Class_Table,select=c("ID","Gender","Death","Classification"))
+merged<-merge(annotation_data,heatmap_table,by = "ID",sort = TRUE)
+```
+
+
+```{r}
+
+ComplexHeatmap::Heatmap(as.matrix(t(merged[,5:13])),
+                          name="Cytokine expression") %v%
+ComplexHeatmap::Heatmap(as.matrix(t(merged[, 4])),
+                                 width=unit(5,"mm"),
+                                 name="G Classification") 
+
+```
+
+- As it can be seen from the annotation, clinical classification groups can't be clustered base on the cytokine expression. 
+
+## Improve figure 2 of the publication
+Add a second annotation with information of deathm and a third one with information of gender
+
+```{r}
+
+ComplexHeatmap::Heatmap(as.matrix(t(merged[,5:13])),
+                          name="Cytokine expression") %v%
+ComplexHeatmap::Heatmap(as.matrix(t(merged[, 4])),
+                                 width=unit(5,"mm"),
+                                 name="G Classification",
+                        bottom_annotation = columnAnnotation(gender=merged$Gender,
+                                                             death=merged$Death))
+```
+
+
+# session info {.unnumbered}
+
+```{r, results='asis',  echo=FALSE, message=FALSE }
+sessionInfo()
+```
